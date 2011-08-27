@@ -18,6 +18,10 @@ from tagging.fields import TagField
 from simple_translation.actions import SimpleTranslationPlaceholderActions
 from djangocms_utils.fields import M2MPlaceholderField
 
+from threadedcomments import ThreadedComment
+from django.contrib.comments.signals import comment_was_posted
+from django.contrib.sites.models import Site
+
 class PublishedEntriesQueryset(QuerySet):
     
     def published(self):
@@ -88,7 +92,7 @@ def close_comments_date():
     return datetime.date.today()
 
 def moderate_comments_date():
-    return datetime.date.today() - datetime.timedelta(days=7)
+    return datetime.date.today() - datetime.timedelta(days=getattr(settings, 'CMSPLUGIN_BLOG_MOD_CLOSE_AFTER', 7))
 
 class AbstractEntryTitle(models.Model):
     entry = models.ForeignKey(Entry, verbose_name=_('entry'))
@@ -97,7 +101,8 @@ class AbstractEntryTitle(models.Model):
     slug = models.SlugField(_('slug'), max_length=255)
     author = models.ForeignKey('auth.User', null=True, blank=True, verbose_name=_("author"))
     
-    comments_enabled = models.BooleanField(_('enable comments'), help_text=_('Comments are allowed for 7 days, moderation is enabled by default.'))
+    comments_active = models.BooleanField(_('Activate comments'), help_text=_('If this is disabled comment forms and existing comments won\'t be displayed.'), default=True)
+    comments_enabled = models.BooleanField(_('enable comments'), help_text=_('Freeze or unfreeze commenting. Existing comments will be displayed.'), default=True )
 
     def __unicode__(self):
         return self.title
@@ -129,16 +134,22 @@ class AbstractEntryTitle(models.Model):
     def comments_closed(self):
         if not self.comments_enabled:
             return True
-        if self.pub_date < datetime.date.today() or self.close_days() >= 7:
+        if self.pub_date < datetime.date.today() or self.close_days() >= getattr(settings, 'CMSPLUGIN_BLOG_MOD_CLOSE_AFTER', 7):
             return True
         return False
+
+    def comments_disabled(self):
+	if not self.comments_active:
+	   return True
+	else:
+	   return False
     
     def moderate_days(self): # not needed for now remove or leave as hook?
         pub_date = datetime.date(self.pub_date.year, self.pub_date.month, self.pub_date.day)
         return (pub_date - datetime.date.today()).days
             
-    def comments_under_moderation(self): # not needed for now remove or leave as hook?
-        return True
+    def comments_under_moderation(self):
+        return getattr(settings,'CMSPLUGIN_BLOG_MODERATE', True)
 
 class EntryTitle(AbstractEntryTitle):
     pass
@@ -157,10 +168,54 @@ from django.contrib.comments.moderation import CommentModerator, moderator
 class EntryModerator(CommentModerator):
     enable_field = 'comments_enabled'
     auto_close_field = 'pub_date'
-    close_after = 7
+    close_after = getattr(settings, 'CMSPLUGIN_BLOG_MOD_CLOSE_AFTER', 7)
         
     def moderate(self, comment, content_object, request):
         return True
 
 if getattr(settings, 'CMSPLUGIN_BLOG_MODERATE', False):
     moderator.register(EntryTitle, EntryModerator)
+
+def on_comment_was_posted(sender, comment, request, *args, **kwargs):
+    """ 
+        Defines action for django.contrib.comments on_comment_was_posted signal. 
+        Provides anti-spam via the Akismet and TypePad Antispam services. Both services require the akismet package.
+        Fails silently if the Akismet package is not available. 
+    """
+    try:
+        from akismet import Akismet
+    except:
+        return
+
+    # use TypePad's AntiSpam if the key is specified in settings.py
+    if hasattr(settings, 'TYPEPAD_ANTISPAM_API_KEY'):
+        ak = Akismet(
+            key=settings.TYPEPAD_ANTISPAM_API_KEY,
+            blog_url='http://%s/' % Site.objects.get(pk=settings.SITE_ID).domain
+        )
+        ak.baseurl = 'api.antispam.typepad.com/1.1/'
+    else:
+        ak = Akismet(
+            key=settings.AKISMET_API_KEY,
+            blog_url='http://%s/' % Site.objects.get(pk=settings.SITE_ID).domain
+        )
+
+    if ak.verify_key():
+        data = {
+            'user_ip': request.META.get('REMOTE_ADDR', '127.0.0.1'),
+            'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+            'referrer': request.META.get('HTTP_REFERER', ''),
+            'comment_type': 'comment',
+            'comment_author': comment.user_name.encode('utf-8'),
+        }
+
+        if ak.comment_check(comment.comment.encode('utf-8'), data=data, build_data=True):
+            comment.flags.create(
+                user=comment.content_object.author,
+                flag='spam'
+            )
+            comment.is_public = False
+            comment.save()
+
+if getattr(settings, 'CMSPLUGIN_BLOG_SPAM_FILTER', False):
+    comment_was_posted.connect(on_comment_was_posted)
