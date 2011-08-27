@@ -132,7 +132,7 @@ class BaseEntryAdmin(M2MPlaceholderAdmin):
         fieldsets[0] = (None, {'fields': self.deferred_fieldset_fields})
         if 'django.contrib.comments' in settings.INSTALLED_APPS:
             fieldsets.insert(1, (_('Comments'), {'fields': (
-                'comments_enabled',
+                'comments_active', 'comments_enabled',
             )}))
         return fieldsets
         
