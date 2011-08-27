@@ -1,0 +1,5 @@
+New features:
+   * Disable comments (so that no comments stuff is rendered at all)
+   * Make automod period configurable.
+   * Be able to disable automod
+   * Spam filtering.
