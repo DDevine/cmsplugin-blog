@@ -1,0 +1,2 @@
+{{user_name}} [{{user_url}}] replied to your post at {{comment_url}}
+{{comment}}
