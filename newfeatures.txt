@@ -1,13 +1,17 @@
 New features:
-   * Disable comments (so that no comments stuff is rendered at all)  -- "Comments Active" on Entry
-   * Make automod period configurable. -- Expose in Settings.py
-   * Be able to disable automod -- "Automoderation" on Entry
-   * Spam filtering. -- Expose in Settings.py
+   * Disable comments (so that no comments stuff is rendered at all)  -- Done
+   * Make automod period configurable. -- Done
+   * Be able to disable automod -- Done
+   * Spam filtering. -- Done
+   * Comment notifications -- Done
+   * Moderator comment notification 
 
 You should have the following configured:
 
-CMSPLUGIN_BLOG_SPAM_FILTER - bool
-TYPEPAD_ANTISPAM_API_KEY or AKISMET_API_KEY - string
-CMSPLUGIN_BLOG_MODERATE - bool
-CMSPLUGIN_BLOG_MOD_CLOSE_AFTER - int
-
+    AKISMET_API_KEY = '[your key]'
+    TYPEPAD_ANTISPAM_API_KEY = '[your key]'
+    CMSPLUGIN_BLOG_SPAM_FILTER = True
+    CMSPLUGIN_BLOG_MODERATE = False
+    CMSPLUGIN_BLOG_MOD_CLOSE_AFTER = 30  #Days
+    CMSPLUGIN_BLOG_COMMENT_NOTIFICATIONS = True
+    CMSPLUGIN_BLOG_EMAIL_FROM = 'noreply@example.com'
