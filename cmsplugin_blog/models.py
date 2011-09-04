@@ -176,7 +176,34 @@ class EntryModerator(CommentModerator):
 if getattr(settings, 'CMSPLUGIN_BLOG_MODERATE', False):
     moderator.register(EntryTitle, EntryModerator)
 
-def on_comment_was_posted(sender, comment, request, *args, **kwargs):
+def on_comment_was_posted_notification(sender, comment, request, *args, **kwargs):
+    # Sends a templated email to the origional poster on reply.
+    from django.core.mail import send_mail
+    from django.template import loader, Context
+
+    to_list = [comment.parent.email] 
+
+    context_dict = {'user_name': comment.user_name.encode('utf-8'),
+		    'user_url': comment.user_url,
+                    'submit_date': comment.submit_date,
+		    'comment': comment.comment,
+                    'comment_url': comment.content_object.get_absolute_url,
+		    }
+
+    print context_dict
+
+    nodes = dict((n.name, n) for n in loader.get_template('email_replied').nodelist if n.__class__.__name__ == 'BlockNode')
+    con = Context(context_dict)
+    r = lambda n: nodes[n].render(con)
+
+    for address in to_list:
+        send_mail(r('subject'), r(getattr(settings, 'CMSPLUGIN_BLOG_EMAIL_TYPE', 'plain'), getattr(settings, 'CMSPLUGIN_BLOG_EMAIL_FROM', "blog@%s" % (Site.objects.get_current().domain)), [address,])
+
+
+if getattr(settings, 'CMSPLUGIN_BLOG_COMMENT_NOTIFICATIONS', False):
+    comment_was_posted.connect(on_comment_was_posted_notification)
+
+def on_comment_was_posted_spamcheck(sender, comment, request, *args, **kwargs):
     """ 
         Defines action for django.contrib.comments on_comment_was_posted signal. 
         Provides anti-spam via the Akismet and TypePad Antispam services. Both services require the akismet package.
@@ -218,4 +245,5 @@ def on_comment_was_posted(sender, comment, request, *args, **kwargs):
             comment.save()
 
 if getattr(settings, 'CMSPLUGIN_BLOG_SPAM_FILTER', False):
-    comment_was_posted.connect(on_comment_was_posted)
+    comment_was_posted.connect(on_comment_was_posted_spamcheck)
+
